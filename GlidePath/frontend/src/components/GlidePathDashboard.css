@@ -94,6 +94,18 @@
   gap: 8px;
 }
 
+.video-preview {
+  margin: 12px 0;
+}
+
+.video-preview video {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #000;
+}
+
 .preview-image {
   width: 100%;
   border-radius: 8px;

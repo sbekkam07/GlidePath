@@ -6,3 +6,5 @@ node_modules/
 data/
 models/
 *.mp4
+backend/outputs/
+backend/uploads/

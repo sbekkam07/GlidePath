@@ -133,7 +133,27 @@ export default function GlidePathDashboard() {
               <p>
                 <strong>Avg Offset:</strong> {formatNumber(analysis.average_offset_px)} px
               </p>
+              {analysis.output_video && <p>
+                <strong>Output:</strong>{" "}
+                <a href={toAbsoluteUrl(analysis.output_video)} target="_blank" rel="noreferrer">
+                  Download/View Video
+                </a>
+              </p>}
+              {analysis.output_dir && (
+                <p>
+                  <strong>Output folder:</strong> {analysis.output_dir}
+                </p>
+              )}
             </div>
+
+            {analysis.output_video && (
+              <div className="video-preview">
+                <h3>Processed Video</h3>
+                <video controls preload="metadata">
+                  <source src={toAbsoluteUrl(analysis.output_video)} type="video/mp4" />
+                </video>
+              </div>
+            )}
 
             <h3>Frame previews</h3>
             {analysis.preview_frames?.length > 0 ? (
@@ -148,7 +168,7 @@ export default function GlidePathDashboard() {
                 ))}
               </div>
             ) : (
-              <p className="muted">No preview frames returned.</p>
+                <p className="muted">No preview frames returned.</p>
             )}
           </section>
 
