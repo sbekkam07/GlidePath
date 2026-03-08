@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -12,8 +13,12 @@ import cv2
 # Project root: GlidePath/GlidePath
 BASE_DIR = Path(__file__).resolve().parents[3]
 
-# Model weights: GlidePath/GlidePath/models/best.pt
-MODEL_PATH = BASE_DIR / "models" / "best.pt"
+# Model weights default: GlidePath/GlidePath/models/best.pt
+DEFAULT_MODEL_PATH = BASE_DIR / "models" / "best.pt"
+_model_path_raw = os.getenv("GLIDEPATH_MODEL_PATH", str(DEFAULT_MODEL_PATH))
+MODEL_PATH = Path(_model_path_raw).expanduser()
+if not MODEL_PATH.is_absolute():
+    MODEL_PATH = (BASE_DIR / MODEL_PATH).resolve()
 
 # Test image: GlidePath/GlidePath/backend/experiments/test1.jpeg
 TEST_IMAGE_PATH = BASE_DIR / "backend" / "experiments" / "test1.jpeg"

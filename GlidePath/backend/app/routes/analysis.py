@@ -1,6 +1,7 @@
 import os
 import statistics
 import logging
+from pathlib import Path
 
 import cv2
 
@@ -18,6 +19,7 @@ from ..utils.video import (
     is_valid_video,
     open_browser_mp4_writer,
     save_upload,
+    transcode_mp4_to_h264,
 )
 
 
@@ -162,6 +164,14 @@ def _run_pipeline(video_path: str) -> dict:
 
     overlay_exists = overlay_path.exists()
     overlay_size = overlay_path.stat().st_size if overlay_exists else 0
+
+    if overlay_exists and overlay_size > 0 and codec == "mp4v":
+        transcoded_path = run_output_dir / "runway_overlay_h264.mp4"
+        if transcode_mp4_to_h264(Path(overlay_path), transcoded_path):
+            os.replace(str(transcoded_path), str(overlay_path))
+            overlay_size = overlay_path.stat().st_size
+            codec = "h264"
+
     overlay_video = None
     if overlay_exists and overlay_size > 0:
         overlay_video = f"/outputs/{run_id}/{overlay_filename}"

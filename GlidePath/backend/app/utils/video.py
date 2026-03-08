@@ -1,5 +1,8 @@
 import logging
 import math
+import os
+import shutil
+import subprocess
 import tempfile
 import uuid
 from collections import deque
@@ -455,7 +458,7 @@ def open_browser_mp4_writer(
         safe_fps = 24.0
 
     size = (int(frame_width), int(frame_height))
-    for codec in ("avc1", "mp4v"):
+    for codec in ("avc1", "H264", "X264", "mp4v"):
         writer = cv2.VideoWriter(
             str(output_path),
             cv2.VideoWriter_fourcc(*codec),
@@ -468,3 +471,82 @@ def open_browser_mp4_writer(
 
     LOGGER.error("Unable to open VideoWriter for %s", output_path)
     return None, None, safe_fps
+
+
+def resolve_ffmpeg_executable() -> Optional[str]:
+    """Resolve an ffmpeg executable from PATH or imageio-ffmpeg."""
+    env_ffmpeg = os.getenv("FFMPEG_PATH")
+    if env_ffmpeg:
+        ffmpeg_path = Path(env_ffmpeg).expanduser()
+        if ffmpeg_path.exists():
+            return str(ffmpeg_path)
+
+    path_ffmpeg = shutil.which("ffmpeg")
+    if path_ffmpeg:
+        return path_ffmpeg
+
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe  # type: ignore
+
+        imageio_path = get_ffmpeg_exe()
+        if imageio_path and Path(imageio_path).exists():
+            return imageio_path
+    except ModuleNotFoundError:
+        LOGGER.warning("imageio-ffmpeg is not installed; ffmpeg fallback unavailable.")
+    except Exception:
+        LOGGER.exception("imageio-ffmpeg lookup failed.")
+
+    return None
+
+
+def transcode_mp4_to_h264(source_path: Path, target_path: Path) -> bool:
+    """
+    Transcode MP4 to H.264/yuv420p for browser compatibility.
+    Returns True only if the target was successfully written.
+    """
+    ffmpeg_exe = resolve_ffmpeg_executable()
+    if ffmpeg_exe is None:
+        LOGGER.warning("ffmpeg not available; cannot transcode %s", source_path)
+        return False
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        target_path.unlink()
+
+    cmd = [
+        ffmpeg_exe,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(source_path),
+        "-an",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(target_path),
+    ]
+
+    try:
+        proc = subprocess.run(cmd, check=False)
+    except Exception:
+        LOGGER.exception("Failed to launch ffmpeg for %s", source_path)
+        return False
+
+    if proc.returncode != 0:
+        LOGGER.error("ffmpeg failed (%s) while transcoding %s", proc.returncode, source_path)
+        if target_path.exists():
+            target_path.unlink()
+        return False
+
+    if not target_path.exists() or target_path.stat().st_size == 0:
+        LOGGER.error("ffmpeg produced no output for %s", source_path)
+        if target_path.exists():
+            target_path.unlink()
+        return False
+
+    return True

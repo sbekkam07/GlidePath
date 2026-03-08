@@ -4,6 +4,7 @@ __pycache__/
 node_modules/
 .DS_Store
 data/
-models/
+models/*
+!models/best.pt
 *.mp4
 frontend/build/

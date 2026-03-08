@@ -15,13 +15,15 @@ app = FastAPI(title="GlidePath", description="Runway approach assistant")
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://glidepath-frontend.vercel.app", # Adjust this later to your actual Vercel URL
+    "https://glidepath-frontend.vercel.app",
 ]
+cors_allow_all = os.getenv("CORS_ALLOW_ALL", "").strip().lower() == "true"
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if os.getenv("RENDER") else allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if cors_allow_all else allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"]
 )
