@@ -7,11 +7,20 @@ from .utils.video import OUTPUT_DIR
 
 from .routes import analysis, health, weather
 
+import os
+
 app = FastAPI(title="GlidePath", description="Runway approach assistant")
+
+# Allow all origins in production or specific ones if needed
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://glidepath-frontend.vercel.app", # Adjust this later to your actual Vercel URL
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"] if os.getenv("RENDER") else allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
