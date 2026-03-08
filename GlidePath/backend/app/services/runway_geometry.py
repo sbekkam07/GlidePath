@@ -189,9 +189,32 @@ def estimate_runway_geometry(
     }
 
 
+# if __name__ == "__main__":
+#     from pathlib import Path
+#     from runway_detector import detect_runway
+
+#     base_dir = Path(__file__).resolve().parents[3]
+#     test_img_path = base_dir / "backend" / "experiments" / "test1.jpeg"
+#     out_path = base_dir / "backend" / "experiments" / "geometry_test_output.png"
+
+#     img = cv2.imread(str(test_img_path))
+#     if img is None:
+#         raise FileNotFoundError(f"Could not load image: {test_img_path}")
+
+#     detection = detect_runway(img)
+#     print("Detection:", detection)
+
+#     geometry = estimate_runway_geometry(img, detection)
+#     print("Offset:", geometry["offset_px"])
+
+#     cv2.imwrite(str(out_path), geometry["annotated_image"])
+#     print(f"Saved visualization to: {out_path}")
+
+
 if __name__ == "__main__":
     from pathlib import Path
     from runway_detector import detect_runway
+    from scoring import score_alignment
 
     base_dir = Path(__file__).resolve().parents[3]
     test_img_path = base_dir / "backend" / "experiments" / "test1.jpeg"
@@ -206,6 +229,9 @@ if __name__ == "__main__":
 
     geometry = estimate_runway_geometry(img, detection)
     print("Offset:", geometry["offset_px"])
+
+    score = score_alignment(geometry)
+    print("Score:", score)
 
     cv2.imwrite(str(out_path), geometry["annotated_image"])
     print(f"Saved visualization to: {out_path}")
