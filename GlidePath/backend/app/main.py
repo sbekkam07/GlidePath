@@ -1,5 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.staticfiles import StaticFiles
+
+from .utils.video import OUTPUT_DIR
 
 from .routes import analysis, health, weather
 
@@ -13,6 +17,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
+
 # Register routers
 app.include_router(health.router, tags=["health"])
 app.include_router(analysis.router, tags=["analysis"])
@@ -23,3 +30,12 @@ app.include_router(weather.router, tags=["weather"])
 def root():
     """Root endpoint"""
     return {"message": "GlidePath backend running"}
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler — returns JSON instead of a raw 500 traceback."""
+    return JSONResponse(
+        status_code=500,
+        content={"error": "An unexpected server error occurred."},
+    )
