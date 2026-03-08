@@ -5,7 +5,11 @@ import {
 } from "recharts";
 import "./GlidePathDashboard.css";
 
-const BACKEND = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000";
+const BACKEND =
+  process.env.REACT_APP_API_URL ||
+  (process.env.NODE_ENV === "development"
+    ? "http://127.0.0.1:8000"
+    : "https://glidepath.onrender.com");
 const C = {
   sky: "#2DAAE1", yellow: "#F4B400", green: "#2ECC71",
   warning: "#F39C12", danger: "#E74C3C", dim: "#5A7A90",
