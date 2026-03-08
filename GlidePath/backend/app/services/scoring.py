@@ -1,66 +1,40 @@
-# Alignment scoring service
-# Classifies approach alignment and stability from runway geometry.
-
-import statistics
-
-# Offset thresholds in pixels
-ALIGNED_THRESHOLD_PX = 10.0    # within ±10px = centered
-CAUTION_THRESHOLD_PX = 30.0    # within ±30px = caution
-# beyond ±30px = warning
+from typing import Any, Dict
 
 
-def compute_alignment_scores(geometry: dict, frame_count: int, confidence: float) -> dict:
-    """Classify approach alignment and stability from runway geometry.
+def score_alignment(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    image_center_x = geometry.get("image_center_x")
+    runway_center_bottom_x = geometry.get("runway_center_bottom_x")
+    offset_px = geometry.get("offset_px")
 
-    Args:
-        geometry:    Output dict from estimate_runway_geometry().
-        frame_count: Total frames in the video.
-        confidence:  Overall detection confidence from detect_runway().
-
-    Returns dict with shape matching AnalysisResponse fields (excluding wind):
-        {
-            "alignment":        str,         # "centered" | "drifting_left" | "drifting_right"
-            "stability":        str,         # "stable" | "caution" | "warning"
-            "confidence":       float,
-            "frame_count":      int,
-            "average_offset_px": float,      # absolute average offset
-            "offsets":          list[float], # per-frame signed offsets
+    if runway_center_bottom_x is None or offset_px is None:
+        return {
+            "alignment": "unknown",
+            "stability": "unstable",
+            "offset_px": None,
+            "offset_ratio": None,
         }
-    """
-    # signed_offset_px: positive = runway right of center (aircraft left of centerline)
-    #                   negative = runway left of center (aircraft right of centerline)
-    signed_offset = geometry.get("signed_offset_px", 0.0)
-    offsets = geometry.get("offset_per_frame", [])
-    avg_offset = abs(signed_offset)
 
-    # --- Alignment classification (uses sign to distinguish left/right) ---
-    if avg_offset <= ALIGNED_THRESHOLD_PX:
-        alignment = "centered"
-    elif signed_offset > 0:
-        # Runway is right of center → aircraft drifting left
-        alignment = "drifting_left"
-    else:
-        # Runway is left of center → aircraft drifting right
+    # normalize by image width-ish scale using image center
+    offset_ratio = abs(offset_px) / max(image_center_x, 1)
+
+    # tune these later if needed
+    if abs(offset_px) < 20:
+        alignment = "aligned"
+    elif offset_px > 0:
         alignment = "drifting_right"
-
-    # --- Stability classification (uses variance across frames) ---
-    if len(offsets) >= 2:
-        spread = statistics.stdev(offsets)
     else:
-        spread = avg_offset
+        alignment = "drifting_left"
 
-    if avg_offset <= ALIGNED_THRESHOLD_PX and spread < 5.0:
+    if offset_ratio < 0.03:
         stability = "stable"
-    elif avg_offset <= CAUTION_THRESHOLD_PX:
+    elif offset_ratio < 0.08:
         stability = "caution"
     else:
-        stability = "warning"
+        stability = "unstable"
 
     return {
         "alignment": alignment,
         "stability": stability,
-        "confidence": confidence,
-        "frame_count": frame_count,
-        "average_offset_px": round(avg_offset, 2),
-        "offsets": offsets,
+        "offset_px": offset_px,
+        "offset_ratio": offset_ratio,
     }
