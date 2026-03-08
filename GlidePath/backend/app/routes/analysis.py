@@ -1,15 +1,39 @@
+import os
+
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from ..schemas.analysis import AnalysisResponse, Wind
-from ..utils.video import is_valid_video, save_upload, get_video_metadata
+from ..services.runway_detector import detect_runway
+from ..services.runway_geometry import estimate_runway_geometry
+from ..services.scoring import compute_alignment_scores
+from ..utils.video import (
+    extract_overlay_previews,
+    get_video_metadata,
+    is_valid_video,
+    save_upload,
+)
 
 
 router = APIRouter()
 
+MAX_FILE_SIZE_MB = 500
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+
+def _run_pipeline(video_path: str, frame_count: int) -> dict:
+    """Run the current mock runway analysis pipeline."""
+    detections = detect_runway(video_path)
+    geometry = estimate_runway_geometry(detections)
+    return compute_alignment_scores(
+        geometry,
+        frame_count,
+        detections["confidence"],
+    )
+
 
 @router.get("/analyze-sample", response_model=AnalysisResponse)
 def analyze_sample():
-    """Mock runway analysis endpoint."""
+    """Return a hardcoded mock analysis response for frontend development."""
     return AnalysisResponse(
         alignment="centered",
         stability="stable",
@@ -23,32 +47,69 @@ def analyze_sample():
             crosswind_kt=6.0,
             headwind_kt=6.0,
         ),
+        preview_frames=[],
     )
 
 
 @router.post("/analyze-video", response_model=AnalysisResponse)
 async def analyze_video(file: UploadFile = File(...)):
-    """Upload a landing video and get a mocked runway analysis response."""
+    """Save the upload, generate demo overlays, and return mock runway analysis."""
     filename = file.filename or ""
+    if not filename:
+        raise HTTPException(status_code=400, detail="No filename provided.")
+
     if not is_valid_video(filename, file.content_type):
         raise HTTPException(
-            status_code=400,
-            detail="Upload must be a video file (.mp4, .avi, .mov, .mkv, .webm)",
+            status_code=415,
+            detail={
+                "error": "Unsupported file type.",
+                "allowed_extensions": [".mp4", ".avi", ".mov", ".mkv", ".webm"],
+            },
         )
 
-    # Save the upload and read its metadata
-    saved_path = await save_upload(file)
-    metadata = get_video_metadata(saved_path)
+    try:
+        saved_path = await save_upload(file)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
 
-    # Use real frame_count from video, fall back to mock if unreadable
+    file_size = os.path.getsize(saved_path)
+    if file_size == 0:
+        os.remove(saved_path)
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if file_size > MAX_FILE_SIZE_BYTES:
+        os.remove(saved_path)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_MB} MB.",
+        )
+
+    metadata = get_video_metadata(saved_path)
     frame_count = metadata["frame_count"] if metadata["frame_count"] > 0 else 243
 
+    try:
+        scores = _run_pipeline(saved_path, frame_count)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Analysis pipeline failed.")
+
+    try:
+        preview_frames, _ = extract_overlay_previews(
+            video_path=saved_path,
+            alignment=scores["alignment"],
+            offsets=scores["offsets"],
+            sample_interval=20,
+            max_frames=10,
+        )
+    except Exception:
+        preview_frames = []
+
     return AnalysisResponse(
-        alignment="drifting_right",
-        stability="caution",
-        confidence=0.89,
-        frame_count=frame_count,
-        average_offset_px=18.7,
-        offsets=[12.3, 15.1, 18.4, 20.2, 22.5, 19.8, 17.1],
+        alignment=scores["alignment"],
+        stability=scores["stability"],
+        confidence=scores["confidence"],
+        frame_count=scores["frame_count"],
+        average_offset_px=scores["average_offset_px"],
+        offsets=scores["offsets"],
         wind=None,
+        preview_frames=preview_frames,
     )
