@@ -7,3 +7,4 @@ opencv-python==4.13.0.92
 numpy==2.4.2
 requests==2.32.5
 pytest>=7.4.0
+ultralytics

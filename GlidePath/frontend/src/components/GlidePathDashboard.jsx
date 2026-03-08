@@ -135,6 +135,18 @@ export default function GlidePathDashboard() {
               </p>
             </div>
 
+            {analysis.overlay_video && (
+              <>
+                <h3>Annotated runway overlay</h3>
+                <video
+                  src={toAbsoluteUrl(analysis.overlay_video)}
+                  controls
+                  className="preview-video"
+                  style={{ width: "100%", maxHeight: "420px", marginBottom: "12px" }}
+                />
+              </>
+            )}
+
             <h3>Frame previews</h3>
             {analysis.preview_frames?.length > 0 ? (
               <div className="preview-grid">

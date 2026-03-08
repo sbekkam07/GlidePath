@@ -19,3 +19,4 @@ class AnalysisResponse(BaseModel):
     offsets: list[float]
     wind: Optional[Wind] = None
     preview_frames: list[str]
+    overlay_video: Optional[str] = None

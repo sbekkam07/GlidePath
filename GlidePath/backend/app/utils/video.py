@@ -1,11 +1,16 @@
+import logging
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import cv2
 from fastapi import UploadFile
 
+from ..services.runway_geometry import draw_runway_overlay
+
+
+LOGGER = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "glidepath_uploads"
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "glidepath_outputs"
@@ -54,6 +59,43 @@ def get_video_metadata(filepath: str) -> dict:
     return metadata
 
 
+def inspect_video_file(filepath: str | Path) -> dict[str, Any]:
+    """Inspect whether a generated video exists and can be decoded."""
+    path = Path(filepath)
+    info: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+        "size_bytes": 0,
+        "readable": False,
+        "frame_count": 0,
+        "fps": 0.0,
+        "width": 0,
+        "height": 0,
+    }
+    if not path.exists():
+        return info
+
+    try:
+        info["size_bytes"] = int(path.stat().st_size)
+    except OSError:
+        return info
+
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        return info
+
+    info["frame_count"] = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    info["fps"] = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+    info["width"] = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    info["height"] = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    success, first_frame = cap.read()
+    info["readable"] = bool(
+        success and first_frame is not None and getattr(first_frame, "size", 0) > 0
+    )
+    cap.release()
+    return info
+
+
 def _offset_series(offsets: list[float], max_count: int) -> list[float]:
     """Normalize offsets for frame preview generation."""
     if max_count <= 0:
@@ -71,55 +113,99 @@ def _offset_series(offsets: list[float], max_count: int) -> list[float]:
     return padded
 
 
-def _draw_overlay(frame, frame_index: int, alignment: str, offset: float) -> "any":
-    """Render centerline + runway mock centerline and alignment label."""
+def _empty_render_geometry(width: int, bbox: list[int] | None = None) -> dict:
+    return {
+        "bbox": list(bbox) if bbox else None,
+        "left_edge": None,
+        "right_edge": None,
+        "centerline": None,
+        "center_x_bottom": None,
+        "image_center_x": width // 2,
+        "signed_offset_px": None,
+        "runway_polygon": None,
+        "geometry_confidence": 0.0,
+    }
+
+
+def _prepare_overlay_geometry(
+    width: int,
+    detection: dict | None = None,
+    fallback_offset: float | None = None,
+) -> tuple[dict, float | None]:
+    detector_confidence = None
+    geometry_for_render = _empty_render_geometry(width)
+
+    if detection is not None and isinstance(detection, dict):
+        detector_confidence = (
+            float(detection.get("confidence", 0.0) or 0.0)
+            if detection.get("confidence") is not None
+            else None
+        )
+        geometry = detection.get("geometry")
+        if isinstance(geometry, dict):
+            geometry_for_render = dict(geometry)
+        if geometry_for_render.get("bbox") is None and isinstance(detection.get("bbox"), list):
+            geometry_for_render["bbox"] = list(detection["bbox"])
+
+    if geometry_for_render.get("signed_offset_px") is None and isinstance(fallback_offset, (int, float)):
+        geometry_for_render["signed_offset_px"] = float(fallback_offset)
+    if geometry_for_render.get("image_center_x") is None:
+        geometry_for_render["image_center_x"] = width // 2
+
+    return geometry_for_render, detector_confidence
+
+
+def render_overlay_frame(
+    frame,
+    frame_index: int,
+    detection: dict | None = None,
+    alignment: str | None = None,
+    fallback_offset: float | None = None,
+) -> "any":
+    """Render runway overlays in a single shared path used by video + previews."""
     if frame is None:
         return None
-
     if len(frame.shape) == 2:
         frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
 
-    h, w = frame.shape[:2]
-    frame_center_x = w // 2
-    runway_center_x = max(0, min(w - 1, int(frame_center_x + offset)))
+    _, width = frame.shape[:2]
+    geometry_for_render, detector_confidence = _prepare_overlay_geometry(
+        width,
+        detection=detection,
+        fallback_offset=fallback_offset,
+    )
 
-    overlay = frame.copy()
-    cv2.line(overlay, (frame_center_x, 0), (frame_center_x, h - 1), (0, 255, 0), 2)
-    cv2.line(
-        overlay,
-        (runway_center_x, int(h * 0.2)),
-        (runway_center_x, int(h * 0.8)),
-        (0, 0, 255),
-        2,
+    return draw_runway_overlay(
+        frame,
+        geometry_for_render,
+        frame_index=frame_index,
+        alignment=alignment,
+        detector_confidence=detector_confidence,
     )
-    label = f"Frame {frame_index} | Alignment: {alignment}"
-    cv2.putText(
-        overlay,
-        label,
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.9,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
+
+
+def _draw_overlay(
+    frame,
+    frame_index: int,
+    alignment: str,
+    offset: float,
+    detection: dict | None = None,
+) -> "any":
+    """Compatibility wrapper for preview generation."""
+    return render_overlay_frame(
+        frame,
+        frame_index=frame_index,
+        detection=detection,
+        alignment=alignment,
+        fallback_offset=offset,
     )
-    cv2.putText(
-        overlay,
-        f"Offset: {offset:.1f}px",
-        (20, 75),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 0),
-        1,
-        cv2.LINE_AA,
-    )
-    return overlay
 
 
 def extract_overlay_previews(
     video_path: str,
     alignment: str,
     offsets: list[float],
+    detections: Optional[list[dict]] = None,
     sample_interval: int = 20,
     max_frames: int = 10,
     output_dir: Optional[Path] = None,
@@ -132,10 +218,16 @@ def extract_overlay_previews(
 
     preview_offsets = _offset_series(offsets, max_frames)
     saved_paths: list[str] = []
+    detections_by_frame = {
+        d.get("frame", idx): d
+        for idx, d in enumerate(detections or [])
+        if isinstance(d, dict)
+    }
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        return saved_paths
+        LOGGER.warning("Preview extraction failed: could not open video '%s'", video_path)
+        return saved_paths, run_id
 
     frame_index = 0
     preview_index = 0
@@ -146,7 +238,8 @@ def extract_overlay_previews(
 
         if frame_index % sample_interval == 0:
             sample_offset = preview_offsets[min(preview_index, len(preview_offsets) - 1)]
-            preview_frame = _draw_overlay(frame, frame_index, alignment, sample_offset)
+            detection = detections_by_frame.get(frame_index) if detections_by_frame else None
+            preview_frame = _draw_overlay(frame, frame_index, alignment, sample_offset, detection=detection)
             out_path = run_output_dir / f"frame_{preview_index + 1:03d}.jpg"
             cv2.imwrite(str(out_path), preview_frame)
             saved_paths.append(f"/outputs/{run_id}/frame_{preview_index + 1:03d}.jpg")

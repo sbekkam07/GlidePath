@@ -1,11 +1,23 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import warnings
+import logging
 from starlette.staticfiles import StaticFiles
 
 from .utils.video import OUTPUT_DIR
 
-from .routes import analysis, health, weather
+from .routes import analysis, health
+try:
+    from .routes import weather
+except ModuleNotFoundError as exc:
+    weather = None
+    warnings.warn(
+        "Weather route disabled. Install optional dependency to enable: pip install httpx"
+    )
+
+logging.basicConfig(level=logging.INFO)
+LOGGER = logging.getLogger(__name__)
 
 app = FastAPI(title="GlidePath", description="Runway approach assistant")
 
@@ -19,11 +31,13 @@ app.add_middleware(
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
+LOGGER.info("Serving output artifacts from '%s' at '/outputs'", OUTPUT_DIR)
 
 # Register routers
 app.include_router(health.router, tags=["health"])
 app.include_router(analysis.router, tags=["analysis"])
-app.include_router(weather.router, tags=["weather"])
+if weather is not None:
+    app.include_router(weather.router, tags=["weather"])
 
 
 @app.get("/")
