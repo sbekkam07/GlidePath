@@ -87,6 +87,36 @@
   margin-bottom: 12px;
 }
 
+.video-block {
+  margin-top: 10px;
+  margin-bottom: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.overlay-video {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #000;
+}
+
+.download-link {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.download-link:hover {
+  text-decoration: underline;
+}
+
 .preview-grid {
   margin-top: 10px;
   display: grid;

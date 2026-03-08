@@ -23,6 +23,29 @@ export default function GlidePathDashboard() {
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState("");
 
+  const handleDownloadOverlay = async () => {
+    if (!analysis?.overlay_video) return;
+
+    try {
+      const response = await fetch(toAbsoluteUrl(analysis.overlay_video));
+      if (!response.ok) {
+        throw new Error(`Download failed (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = "runway_overlay.mp4";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (downloadErr) {
+      setError(downloadErr.message || "Failed to download annotated video.");
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -134,6 +157,28 @@ export default function GlidePathDashboard() {
                 <strong>Avg Offset:</strong> {formatNumber(analysis.average_offset_px)} px
               </p>
             </div>
+
+            <h3>Annotated video</h3>
+            {analysis.overlay_video ? (
+              <div className="video-block">
+                <video
+                  key={toAbsoluteUrl(analysis.overlay_video)}
+                  className="overlay-video"
+                  src={toAbsoluteUrl(analysis.overlay_video)}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  onError={() => setError("Annotated video could not be played in browser.")}
+                >
+                  Your browser does not support MP4 playback.
+                </video>
+                <button type="button" className="download-link" onClick={handleDownloadOverlay}>
+                  Download annotated video
+                </button>
+              </div>
+            ) : (
+              <p className="muted">Annotated video not available for this run.</p>
+            )}
 
             <h3>Frame previews</h3>
             {analysis.preview_frames?.length > 0 ? (

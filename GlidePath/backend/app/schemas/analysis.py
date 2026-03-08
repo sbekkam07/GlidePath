@@ -18,4 +18,5 @@ class AnalysisResponse(BaseModel):
     average_offset_px: float
     offsets: list[float]
     wind: Optional[Wind] = None
+    overlay_video: Optional[str] = None
     preview_frames: list[str]
